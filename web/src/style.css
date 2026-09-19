@@ -1,0 +1,721 @@
+/* 默照 · 水下母题。动画仅 transform/opacity/滤镜；封存下沉的 blur 为规格特许。 */
+
+:root {
+  /* 设计 token：所有颜色收敛于此 */
+  --bg: #0b1118;
+  --bg-deep: #070d13;
+  --surface: #14202b;
+  --ink: #d7e1e8;
+  --ink-92: rgba(215, 225, 232, 0.92);
+  --ink-85: rgba(215, 225, 232, 0.85);
+  --ink-55: rgba(215, 225, 232, 0.55);
+  --ink-45: rgba(215, 225, 232, 0.45);
+  --ink-40: rgba(215, 225, 232, 0.4);
+  --accent: #6fb3c9;
+  --accent-38: rgba(111, 179, 201, 0.38);
+  --accent-30: rgba(111, 179, 201, 0.3);
+  --accent-10: rgba(111, 179, 201, 0.1);
+  --red: #d0494f; /* 全界面唯一红色：录音点 */
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto,
+    'Helvetica Neue', 'Noto Sans SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* WebGL 回退：纯 CSS 深海渐变 */
+#app.no-water {
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(111, 179, 201, 0.22), transparent 55%),
+    linear-gradient(to bottom, #14242f 0%, var(--bg) 48%, var(--bg-deep) 100%);
+}
+#app.no-water #water {
+  display: none;
+}
+
+#water {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+/* ─── 静息态 ─── */
+
+#hotzone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 45%;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+#app[data-mode='idle'] #hotzone {
+  pointer-events: auto;
+}
+
+#record-float {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  z-index: 3;
+  /* 静息浮动由 JS rAF 驱动：translateY ±9pt / 6s，叠加错相等积晃动 scaleX/Y ±3% / 5.3s */
+}
+
+/* 气泡膜边界：4 组有机轮廓极缓循环（9s），半径起伏 ≤7%（每条边两角互补至 100%，防插值缩放）——
+   肉眼可辨的膜起伏，但任何时刻仍是一颗泡。本体/双伪元素/红核心共用同名同参动画天然同步 */
+@keyframes blob-morph {
+  0%,
+  100% {
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+  }
+  25% {
+    border-radius: 57% 43% 45% 55% / 44% 55% 45% 56%;
+  }
+  50% {
+    border-radius: 44% 56% 57% 43% / 55% 43% 57% 45%;
+  }
+  75% {
+    border-radius: 55% 45% 56% 44% / 57% 46% 54% 43%;
+  }
+}
+
+#record-btn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: none;
+  animation: blob-morph 9s ease-in-out infinite;
+  /* 薄透球体：背后水景经 backdrop-filter 真实穿过（轻微折射感） */
+  background: radial-gradient(circle at 38% 28%, rgba(215, 225, 232, 0.07) 0%, transparent 52%);
+  backdrop-filter: blur(8px) saturate(1.4);
+  -webkit-backdrop-filter: blur(8px) saturate(1.4);
+  /* 菲涅尔边缘光：宽而柔的径向衰减，多层低透明度叠出"光从水里漫过来"，无描线硬边 */
+  box-shadow:
+    inset 0 1px 12px rgba(228, 238, 244, 0.13),
+    inset 0 0 24px rgba(190, 220, 232, 0.11),
+    inset 10px 14px 30px rgba(215, 225, 232, 0.07),
+    inset -12px -18px 36px rgba(111, 179, 201, 0.13),
+    inset 0 -28px 52px rgba(6, 14, 20, 0.16),
+    0 0 46px rgba(111, 179, 201, 0.09);
+  /* transform/opacity 由 motion 托管；rim/光晕走过渡（is-red 为等长列表插值） */
+  transition: box-shadow 300ms;
+}
+
+/* 左上月牙形漫射高光：宽弧 + 双边羽化的环形遮罩 + 大模糊，像光斑不是贴纸反光，随浮动轻微视差游移 */
+#record-btn::before,
+#record-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  transition: opacity 300ms;
+  animation: blob-morph 9s ease-in-out infinite;
+}
+#record-btn::before {
+  background: conic-gradient(
+    from 285deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.14) 26deg,
+    rgba(255, 255, 255, 0.3) 46deg,
+    rgba(255, 255, 255, 0.1) 80deg,
+    transparent 116deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 18px), #000 calc(100% - 10px), #000 calc(100% - 6px), transparent 100%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 18px), #000 calc(100% - 10px), #000 calc(100% - 6px), transparent 100%);
+  filter: blur(3px);
+  transform: translate(calc(var(--par, 0) * 1.6px), calc(var(--par, 0) * -2.6px));
+}
+/* 肥皂膜虹彩 rim：冷色系内极轻相移（青蓝 → 淡紫），色标拉宽、过渡更绵 */
+#record-btn::after {
+  background: conic-gradient(
+    from 120deg,
+    rgba(111, 179, 201, 0) 0deg,
+    rgba(111, 179, 201, 0.16) 45deg,
+    rgba(140, 168, 214, 0.2) 95deg,
+    rgba(158, 150, 209, 0.16) 155deg,
+    rgba(111, 179, 201, 0.08) 210deg,
+    rgba(130, 164, 206, 0.18) 265deg,
+    rgba(111, 179, 201, 0.13) 315deg,
+    rgba(111, 179, 201, 0) 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 5px), #000 calc(100% - 3px), transparent 100%);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 9px), #000 calc(100% - 5px), #000 calc(100% - 3px), transparent 100%);
+  filter: blur(1.2px);
+  transform: rotate(calc(var(--par, 0) * 5deg));
+}
+
+/* 红核心：平时透明，录音态淡入（气泡收拢凝聚成红点） */
+.rb-core {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: blob-morph 9s ease-in-out infinite;
+  background: radial-gradient(circle at 42% 36%, #e06a63 0%, var(--red) 58%, #a83538 100%);
+  box-shadow:
+    0 0 26px rgba(208, 73, 79, 0.42),
+    0 0 7px rgba(208, 73, 79, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  opacity: 0;
+  transition: opacity 300ms;
+  pointer-events: none;
+}
+#app:not([data-mode='idle']) #record-btn {
+  pointer-events: none;
+}
+
+#record-btn.enter-fade {
+  animation: fade-in 150ms ease-out both;
+}
+
+/* 录音态：rim/高光/虹彩淡出，红核心凝聚（scale 由 motion spring 托管），3s 极轻脉动。
+   膜形变保留：红点居中、轮廓继续极缓起伏更像活物；blob-morph 原样列在首位，动画不重启、与伪元素不错相 */
+#record-btn.is-red {
+  box-shadow:
+    inset 0 1px 12px rgba(228, 238, 244, 0),
+    inset 0 0 24px rgba(190, 220, 232, 0),
+    inset 10px 14px 30px rgba(215, 225, 232, 0),
+    inset -12px -18px 36px rgba(111, 179, 201, 0),
+    inset 0 -28px 52px rgba(6, 14, 20, 0),
+    0 0 46px rgba(111, 179, 201, 0);
+  animation:
+    blob-morph 9s ease-in-out infinite,
+    rec-pulse 3s ease-in-out 240ms infinite;
+}
+#record-btn.is-red .rb-core {
+  opacity: 1;
+}
+#record-btn.is-red::before,
+#record-btn.is-red::after {
+  opacity: 0;
+}
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.78;
+  }
+}
+
+/* 底部常驻灰字：45% 透明度；箴言用衬线/隶书 */
+#status-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
+  z-index: 2;
+  margin: 0;
+  font-family: "STLiti", "LiSu", "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--ink-45);
+  transition: opacity 200ms var(--ease-out-quint);
+}
+#app:not([data-mode='idle']) #status-line {
+  opacity: 0;
+}
+
+/* ─── 录音态 ─── */
+
+#waveform {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms var(--ease-out-quint);
+}
+#app[data-mode='recording'] #waveform {
+  opacity: 1;
+}
+
+.wf-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+}
+
+/* 中线下方镜像倒影：翻转 + 模糊 + 渐隐（水面倒影感） */
+.wf-reflect-wrap {
+  margin-top: 3px;
+  height: 38px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
+}
+.wf-reflect {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 56px;
+  transform: scaleY(-1);
+  filter: blur(2.5px);
+  opacity: 0.16;
+}
+
+.wf-bar {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 3px;
+  transform: scaleY(0.05);
+  transform-origin: bottom;
+  /* 顶端极淡辉光（亮尖随 scaleY 保持在顶端） */
+  background: linear-gradient(
+    to top,
+    rgba(111, 179, 201, 0.45) 0%,
+    rgba(111, 179, 201, 0.85) 62%,
+    rgba(190, 220, 232, 0.95) 100%
+  );
+  box-shadow: 0 0 6px rgba(111, 179, 201, 0.16);
+}
+
+#timer {
+  position: absolute;
+  left: 50%;
+  top: 55.5%;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease-out-quint);
+}
+#app[data-mode='recording'] #timer {
+  opacity: 1;
+}
+
+#rec-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 46px);
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 56px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--ease-out-quint);
+}
+#app[data-mode='recording'] #rec-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+#rec-actions button {
+  font-size: 16px;
+  padding: 12px 20px;
+  transition: opacity 150ms;
+}
+#finish-btn {
+  color: var(--ink-92);
+}
+#cancel-btn {
+  color: var(--ink-55);
+}
+#rec-actions button:active {
+  opacity: 0.55;
+}
+
+/* ─── 交叉淡化宿主（状态行 / 计时器共用） ─── */
+
+.fade-host {
+  display: grid;
+  place-items: center;
+}
+.fade-host > .fade-item {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+.fade-in {
+  animation: fade-in 150ms ease-out both;
+}
+.fade-out {
+  animation: fade-out 150ms ease-out both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ─── 校对页 ─── */
+
+#review-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#review-screen[hidden] {
+  display: none;
+}
+
+#review-card {
+  position: relative;
+  width: calc(100% - 48px);
+  max-width: 520px;
+  max-height: 72vh;
+  overflow-y: auto;
+  border-radius: 20px;
+  padding: 18px 20px 10px;
+  /* glassmorphism 近似：半透明底 + backdrop blur + 顶部内高光 + 1px 内边光 */
+  background: rgba(18, 26, 34, 0.52);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(215, 225, 232, 0.09),
+    inset 0 0 0 1px rgba(111, 179, 201, 0.1),
+    0 24px 60px rgba(4, 10, 16, 0.55); /* 环境投影，带背景色染色 */
+  will-change: transform;
+}
+#review-card.rise-reduced {
+  animation: fade-in 150ms ease-out both;
+}
+
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  margin-bottom: 8px;
+}
+.review-state {
+  font-size: 13px;
+  color: var(--ink-45);
+}
+.review-state:empty {
+  display: none;
+}
+#seal-btn {
+  font-size: 15px;
+  color: var(--ink-85);
+  padding: 6px 2px;
+  transition: opacity 150ms;
+}
+#seal-btn:active {
+  opacity: 0.55;
+}
+
+#review-text {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 17px; /* 转写正文 17px/1.7：全界面唯一允许大声的元素 */
+  line-height: 1.7;
+  color: var(--ink-45);
+  caret-color: var(--accent); /* 光标用强调色 */
+  user-select: text;
+  -webkit-user-select: text;
+  transition: color 250ms ease-out;
+}
+#review-text.lit,
+#review-text:focus {
+  color: var(--ink-92);
+}
+#review-text.pre-lit,
+#review-text.pre-lit:focus {
+  color: transparent;
+}
+
+/* 转写逐行淡入 overlay（落位后交换回 textarea） */
+.lines-reveal {
+  position: absolute;
+  pointer-events: none;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink-92);
+  transition: opacity 200ms ease-out;
+}
+.lines-reveal .line {
+  display: block;
+  opacity: 0;
+  animation: line-in 150ms ease-out forwards;
+}
+.lines-reveal.done {
+  opacity: 0;
+}
+@keyframes line-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#discard-btn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 0 12px;
+  font-size: 13px;
+  color: var(--ink-40); /* 底部边缘 40% 透明度 */
+  text-align: center;
+  transition: opacity 150ms;
+}
+#discard-btn:active {
+  opacity: 0.55;
+}
+
+/* ─── 仪式：点按水波 / DOM 波纹兜底 / 蒸发微粒 ─── */
+
+#fx {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.tap-ripple {
+  position: fixed;
+  width: 84px;
+  height: 84px;
+  margin: -42px 0 0 -42px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  opacity: 0.4;
+  animation: tap-ripple 500ms ease-out forwards;
+}
+@keyframes tap-ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.seal-ring {
+  position: fixed;
+  width: 110px;
+  height: 110px;
+  margin: -55px 0 0 -55px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(111, 179, 201, 0.55);
+  opacity: 0;
+  animation: seal-ring 1200ms ease-out forwards;
+}
+@keyframes seal-ring {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(var(--ring-scale, 2));
+    opacity: 0;
+  }
+}
+
+/* 蒸发：柔和发光微粒，融入环境微粒场 */
+.evap-particle {
+  position: fixed;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: rgba(215, 225, 232, 0.8);
+  box-shadow: 0 0 8px 1px rgba(111, 179, 201, 0.35);
+  animation: evap 540ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+@keyframes evap {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.75;
+    filter: blur(0);
+  }
+  to {
+    transform: translate(var(--dx, 0), var(--dy, -70px)) scale(0.5);
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+}
+
+#review-card.seal-fade,
+#review-card.quiet-out {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+/* ─── 401 兜底：token 输入（与校对页同语言：玻璃、细环、无多余文案） ─── */
+
+#token-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 13, 19, 0.35);
+}
+#token-gate[hidden] {
+  display: none;
+}
+#token-form {
+  width: calc(100% - 96px);
+  max-width: 300px;
+  border-radius: 16px;
+  padding: 16px 18px 12px;
+  background: rgba(18, 26, 34, 0.6);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow:
+    inset 0 1px 0 rgba(215, 225, 232, 0.09),
+    inset 0 0 0 1px rgba(111, 179, 201, 0.1),
+    0 24px 60px rgba(4, 10, 16, 0.55);
+}
+#token-input {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  border-bottom: 1px solid rgba(111, 179, 201, 0.25);
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink-92);
+  caret-color: var(--accent);
+  padding: 6px 2px;
+}
+#token-input::placeholder {
+  color: var(--ink-40);
+}
+#token-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 24px;
+  margin-top: 12px;
+}
+#token-actions button {
+  font-size: 14px;
+  padding: 4px 2px;
+  transition: opacity 150ms;
+}
+#token-actions button:active {
+  opacity: 0.55;
+}
+#token-cancel {
+  color: var(--ink-45);
+}
+#token-ok {
+  color: var(--ink-85);
+}
+
+/* ─── 通知（仅麦克风不可用时） ─── */
+
+#notice {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 24%;
+  z-index: 30;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease-out;
+}
+#notice.show {
+  opacity: 1;
+}
+
+/* ─── prefers-reduced-motion：仪式降级为 150ms 交叉淡化，shader 静态化 ─── */
+
+#app.reduced #waveform,
+#app.reduced #timer,
+#app.reduced #rec-actions,
+#app.reduced #status-line {
+  transition-duration: 150ms;
+}
+#app.reduced #record-btn.is-red {
+  animation: none;
+}
+/* 膜形变全停，回静态正圆；入场 150ms 淡入（enter-fade）保留 */
+#app.reduced #record-btn,
+#app.reduced #record-btn::before,
+#app.reduced #record-btn::after,
+#app.reduced .rb-core {
+  animation: none;
+}
+#app.reduced #record-btn.enter-fade {
+  animation: fade-in 150ms ease-out both;
+}
+#app.reduced .tap-ripple,
+#app.reduced .seal-ring,
+#app.reduced .evap-particle {
+  display: none;
+}

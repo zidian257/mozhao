@@ -1,0 +1,20 @@
+{
+  "name": "observer-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc --noEmit && vite build && node scripts/compress.mjs",
+    "preview": "vite preview",
+    "icons": "node scripts/gen-icons.mjs",
+    "mock": "node scripts/mock-server.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  },
+  "dependencies": {
+    "motion": "^13.4.0"
+  }
+}

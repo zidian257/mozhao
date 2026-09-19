@@ -1,0 +1,72 @@
+{
+  "systeminfo": "AVX2 = 0 | NEON = 1 | METAL = 1",
+  "model": {
+    "type": "large-v3-turbo",
+    "multilingual": true,
+    "vocab": 51866
+  },
+  "params": {
+    "model": "./vendor/whisper/models/ggml-large-v3-turbo.bin",
+    "language": "auto",
+    "translate": false
+  },
+  "result": {
+    "language": "zh"
+  },
+  "transcription": [
+    {
+      "timestamps": {
+        "from": "00:00:00,000",
+        "to": "00:00:02,960"
+      },
+      "offsets": {
+        "from": 0,
+        "to": 2960
+      },
+      "text": " 欢迎大家来体验达摩院推出的",
+      "tokens": [
+        {
+          "text": "[_BEG_]",
+          "timestamps": {},
+          "offsets": {}
+        }
+      ]
+    },
+    {
+      "timestamps": {
+        "from": "00:00:02,960",
+        "to": "00:00:05,180"
+      },
+      "offsets": {
+        "from": 2960,
+        "to": 5180
+      },
+      "text": "语音识别模型。 ",
+      "tokens": []
+    },
+    {
+      "timestamps": {
+        "from": "00:00:05,180",
+        "to": "00:00:05,500"
+      },
+      "offsets": {
+        "from": 5180,
+        "to": 5500
+      },
+      "text": "[_BEG_]",
+      "tokens": []
+    },
+    {
+      "timestamps": {
+        "from": "00:00:05,500",
+        "to": "00:00:06,000"
+      },
+      "offsets": {
+        "from": 5500,
+        "to": 6000
+      },
+      "text": "   ",
+      "tokens": []
+    }
+  ]
+}

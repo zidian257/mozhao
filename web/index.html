@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>默照</title>
+    <meta name="theme-color" content="#0b1118" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="默照" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div id="app" data-mode="idle">
+      <canvas id="water" aria-hidden="true"></canvas>
+      <div id="hotzone" aria-hidden="true"></div>
+      <div id="record-float">
+        <button id="record-btn" type="button" aria-label="录音"><span class="rb-core" aria-hidden="true"></span></button>
+      </div>
+      <div id="waveform" aria-hidden="true"></div>
+      <div id="timer" class="fade-host" aria-hidden="true"></div>
+      <div id="rec-actions">
+        <button id="finish-btn" type="button">完成</button>
+        <button id="cancel-btn" type="button">取消</button>
+      </div>
+      <p id="status-line" class="fade-host" aria-live="polite"></p>
+      <section id="review-screen" hidden>
+        <div id="review-card">
+          <header class="review-head">
+            <span id="review-state" class="review-state"></span>
+            <button id="seal-btn" type="button">封存</button>
+          </header>
+          <textarea id="review-text" rows="4" aria-label="转写文本"></textarea>
+          <button id="discard-btn" type="button">丢弃</button>
+        </div>
+      </section>
+      <div id="fx" aria-hidden="true"></div>
+      <div id="notice" role="status"></div>
+      <div id="token-gate" hidden>
+        <form id="token-form">
+          <input id="token-input" type="password" placeholder="token" autocomplete="off" />
+          <div id="token-actions">
+            <button type="button" id="token-cancel">取消</button>
+            <button type="submit" id="token-ok">确认</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
