@@ -7,7 +7,15 @@ import { prefersReducedMotion } from './reduced-motion';
 //   uRes(vec2)      画布物理像素尺寸
 //   uTime(float)    秒
 //   uRipples[8](vec4) x=uv.x, y=uv.y, z=起始时刻(秒), w=强度（0 为空闲槽）
+//   uGrain(float)   胶片颗粒幅度（桌面 0.010；触屏 0——高 PPI OLED 上 6fps 重播种呈雪花闪烁）
 // 涟漪为解析式衰减波叠加：环形高斯包络外扩 + 正弦相位 → 采样位移（扭曲焦散/光柱）+ 微光。
+// 构图：p 空间按画布高度归一（x = uv.x*aspect），圆形距离各向同性，任意宽高比不变形；
+// 斯涅尔窗/光柱/焦散均锚定顶中，竖屏天然成立。
+// 图案尺度（焦散/微粒）锚定短边 ps = p / min(aspect,1)：竖屏手机上若按屏高归一，
+// 细丝光网会被放大成满屏云团——按短边归一后，任何设备上图案密度一致。
+// 移动端保护（pointer: coarse）：DPR 上限 1.5、绘制节流 30fps、颗粒归零（dither 保留防色带）。
+// resize：地址栏伸缩会高频触发，只做 150ms 防抖后的 buffer 重设——过渡期旧 buffer 被 CSS
+// 软拉伸，无重 alloc 跳变。监听 window resize + visualViewport.resize。
 // 降级：WebGL2 不可用 / 编译失败 → 返回 inactive（调用方回退 CSS 渐变）；
 //       reduced-motion → 静态单帧（uTime 固定，无漂移、无涟漪、颗粒定格）。
 
@@ -26,6 +34,7 @@ precision highp float;
 uniform vec2 uRes;
 uniform float uTime;
 uniform vec4 uRipples[8];
+uniform float uGrain;
 
 out vec4 fragColor;
 
@@ -85,6 +94,8 @@ void main() {
   vec2 q = p + disp;
   vec2 quv = vec2(q.x / aspect, q.y);
   float up = clamp(quv.y, 0.0, 1.0);
+  // 短边归一图案坐标：ps = p / min(aspect, 1)，竖屏与桌面图案密度一致
+  vec2 qs = q / min(aspect, 1.0);
 
   // 双色 ramp：顶部青碧（略偏绿）→ 中部灰蓝 → 底部深靛蓝（一丝紫），无纯黑无高饱和
   vec3 cTop = vec3(0.220, 0.380, 0.400);
@@ -119,22 +130,24 @@ void main() {
   col += vec3(0.50, 0.72, 0.76) * rays * 0.10;
 
   // 焦散：domain-warped ridged fbm 细丝光网，限上半部；漂移 + 大尺度明暗流动，2-3s 可辨
+  // 尺度走 qs（短边归一）：竖屏上仍是细丝，不会糊成大云团
   float driftA = uTime * 0.04;
-  vec2 cp = q * 6.0;
+  vec2 cp = qs * 6.0;
   vec2 warp = vec2(
     fbm(cp * 0.6 + vec2(driftA, -driftA * 0.7)),
     fbm(cp * 0.6 + vec2(5.2, 1.3) - driftA * 0.6));
   float cn = fbm(cp + (warp - 0.5) * 1.4 + vec2(driftA * 0.8, driftA * 0.5));
   float fil = 1.0 - abs(2.0 * cn - 1.0);
   fil = pow(fil, 7.0);
-  float flow = 0.7 + 0.3 * fbm(q * 1.3 + vec2(uTime * 0.05, -uTime * 0.036));
+  float flow = 0.7 + 0.3 * fbm(qs * 1.3 + vec2(uTime * 0.05, -uTime * 0.036));
   col += vec3(0.55, 0.75, 0.78) * fil * flow * 0.12 * smoothstep(0.5, 0.95, up);
 
   // 浮游微粒：三个深度层视差漂移，软圆盘无硬边；前景大而暗（bokeh 失焦）并缓慢横移
+  // 网格尺度同样走 qs——竖屏上 bokeh 光斑保持与桌面一致的相对大小
   for (int layer = 0; layer < 3; layer++) {
     float fl = float(layer);
     float gscale = 4.0 + fl * 4.5;
-    vec2 gp = q * gscale;
+    vec2 gp = qs * gscale;
     vec2 id = floor(gp);
     vec2 f = fract(gp);
     float h1 = hash21(id + fl * 13.7);
@@ -155,11 +168,11 @@ void main() {
   float vig = smoothstep(1.5, 0.5, length(uv - vec2(0.5)));
   col *= mix(0.90, 1.0, vig);
 
-  // 去色带：hash 抖动（±1/255 级）+ 6fps 胶片颗粒（±0.5% 亮度，慢变）
+  // 去色带：hash 抖动（±1/255 级，常开）+ 6fps 胶片颗粒（幅度 uGrain，触屏为 0）
   col += (hash21(gl_FragCoord.xy) - 0.5) * (1.5 / 255.0);
   float gt = floor(uTime * 6.0);
   float grain = hash21(gl_FragCoord.xy + vec2(mod(gt, 16.0) * 17.0, mod(gt, 9.0) * 29.0)) - 0.5;
-  col *= 1.0 + grain * 0.010;
+  col *= 1.0 + grain * uGrain;
 
   fragColor = vec4(col, 1.0);
 }`;
@@ -217,7 +230,14 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
   const uRes = gl.getUniformLocation(prog, 'uRes');
   const uTime = gl.getUniformLocation(prog, 'uTime');
   const uRipples = gl.getUniformLocation(prog, 'uRipples[0]');
-  if (!uRes || !uTime || !uRipples) return inactive;
+  const uGrain = gl.getUniformLocation(prog, 'uGrain');
+  if (!uRes || !uTime || !uRipples || !uGrain) return inactive;
+
+  // pointer: coarse 比 UA 可靠（iPadOS 桌面模式 UA 谎称 Mac，但 pointer 仍为 coarse）
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const maxDpr = coarse ? 1.5 : 2;
+  const minFrameMs = coarse ? 1000 / 30 : 0; // 触屏 30fps 足够，省电防掉帧
+  gl.uniform1f(uGrain, coarse ? 0 : 0.01);
 
   const ripples = new Float32Array(MAX_RIPPLES * 4);
   let slot = 0;
@@ -226,9 +246,11 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
 
   let staticMode = prefersReducedMotion();
   let raf = 0;
+  let lastDrawMs = -Infinity;
+  let resizeTimer = 0;
 
   const resize = (): void => {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
     const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
     const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
     if (canvas.width !== w || canvas.height !== h) {
@@ -236,6 +258,15 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
       canvas.height = h;
       gl.viewport(0, 0, w, h);
     }
+  };
+
+  // 地址栏伸缩/旋转都会连发 resize：只取静默 150ms 后的最终尺寸，避免反复 realloc 闪变
+  const scheduleResize = (): void => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      resize();
+      if (staticMode) draw(STATIC_TIME);
+    }, 150);
   };
 
   const draw = (t: number): void => {
@@ -247,15 +278,16 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
 
   const loop = (): void => {
     if (staticMode || document.hidden) return;
-    resize();
-    draw(now());
+    const tMs = performance.now();
+    if (tMs - lastDrawMs >= minFrameMs) {
+      lastDrawMs = tMs;
+      draw(now());
+    }
     raf = requestAnimationFrame(loop);
   };
 
-  window.addEventListener('resize', () => {
-    resize();
-    if (staticMode) draw(STATIC_TIME);
-  });
+  window.addEventListener('resize', scheduleResize);
+  window.visualViewport?.addEventListener('resize', scheduleResize);
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {

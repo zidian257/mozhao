@@ -265,7 +265,8 @@ func TestProofreadWindow(t *testing.T) {
 	}
 }
 
-// 重启补转写队列：无 transcript 的 voice 条目在列，failed 的不在列。
+// 重启补转写队列：无 transcript 的 voice 条目在列；failed 的也在列（重试），
+// 但达到 maxTranscriptionAttempts 次失败后退出队列。
 func TestPendingTranscription(t *testing.T) {
 	s, _ := openTest(t, time.Second)
 	ts := baseTime()
@@ -275,7 +276,15 @@ func TestPendingTranscription(t *testing.T) {
 	mustAppend(t, s, Event{Type: TypeTranscript, Ref: "w2", Ts: ts, Engine: EngineFailed})
 
 	ids := s.PendingTranscription()
+	if len(ids) != 2 || ids[0] != "w1" || ids[1] != "w2" {
+		t.Fatalf("PendingTranscription = %v; want [w1 w2]", ids)
+	}
+
+	// 再失败两次（累计 3 次）后 w2 退出待转写队列
+	mustAppend(t, s, Event{Type: TypeTranscript, Ref: "w2", Ts: ts, Engine: EngineFailed})
+	mustAppend(t, s, Event{Type: TypeTranscript, Ref: "w2", Ts: ts, Engine: EngineFailed})
+	ids = s.PendingTranscription()
 	if len(ids) != 1 || ids[0] != "w1" {
-		t.Fatalf("PendingTranscription = %v; want [w1]", ids)
+		t.Fatalf("after 3 failed attempts, PendingTranscription = %v; want [w1]", ids)
 	}
 }

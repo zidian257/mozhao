@@ -67,16 +67,17 @@ type Transcript struct {
 
 // Entry 是一个 id 折叠全部事件后的读侧状态。
 type Entry struct {
-	ID         string
-	Ts         time.Time
-	Type       string // voice | text
-	Media      string // 相对 data 目录的路径
-	Dur        *float64
-	Src        string
-	Body       string // type=text 的原始文本
-	Transcript *Transcript
-	Edit       *string // 最新 edit.body
-	Deleted    bool
+	ID                 string
+	Ts                 time.Time
+	Type               string // voice | text
+	Media              string // 相对 data 目录的路径
+	Dur                *float64
+	Src                string
+	Body               string // type=text 的原始文本
+	Transcript         *Transcript
+	TranscriptAttempts int // 已追加的 transcript 事件数（限制失败重试用）
+	Edit               *string // 最新 edit.body
+	Deleted            bool
 }
 
 // FoldedText 按契约折叠：最新 edit.body ?? transcript.text ?? text.body ?? nil。
@@ -205,6 +206,7 @@ func (s *Store) apply(ev *Event) {
 		s.order = append(s.order, e)
 	case TypeTranscript:
 		if e, ok := s.entries[ev.Ref]; ok {
+			e.TranscriptAttempts++
 			e.Transcript = &Transcript{Ts: ev.Ts, Text: ev.Text, Engine: ev.Engine, Segments: ev.Segments}
 		}
 	case TypeEdit:
@@ -434,14 +436,23 @@ func (s *Store) Counts() (sealed, unlocked int) {
 	return sealed, unlocked
 }
 
-// PendingTranscription 返回尚无 transcript 事件的 voice 条目（重启后补转写用）。
+// maxTranscriptionAttempts 是同一 entry 转写失败的重试上限：
+// 每次重启会为 failed 条目补转写，但永久性坏音频不应每次启动都白跑。
+const maxTranscriptionAttempts = 3
+
+// PendingTranscription 返回待补转写的 voice 条目（重启后补转写用）：
+// 尚无 transcript 事件的，以及最近转写失败但未超重试上限的。
 func (s *Store) PendingTranscription() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := make([]string, 0)
 	for i := len(s.order) - 1; i >= 0; i-- { // 旧→新，先进先转
 		e := s.order[i]
-		if e.Type == TypeVoice && !e.Deleted && e.Transcript == nil && e.Media != "" {
+		if e.Type != TypeVoice || e.Deleted || e.Media == "" {
+			continue
+		}
+		if e.Transcript == nil ||
+			(e.Transcript.Engine == EngineFailed && e.TranscriptAttempts < maxTranscriptionAttempts) {
 			ids = append(ids, e.ID)
 		}
 	}

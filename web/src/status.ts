@@ -2,8 +2,8 @@ import { getStatus } from './api';
 import { crossfadeText } from './fade';
 
 // 底部常驻行：每次打开随机一句佛学箴言（crypto 随机，不加引号出处）。
-// 本 session 内完成一次封存后，切换为「已封存 N 条」作为"存上了"的确认，保持到关闭；
-// 下次打开又回到箴言。401/离线降级同样落回箴言——这一行只有箴言或封存数两种内容。
+// 完成一次封存后，切换为「已封存 N 条」作为"存上了"的确认，约 90 秒后交叉淡化回箴言；
+// 下次打开也是箴言。401/离线降级同样落回箴言——这一行只有箴言或封存数两种内容。
 // 每 30s 轮询 + 回到前台刷新 + 封存后 bump。
 const VERSES = [
   '凡所有相，皆是虚妄',
@@ -20,6 +20,9 @@ const VERSES = [
   '溪声便是广长舌，山色岂非清净身',
 ] as const;
 
+// 封存数确认停留时长：够用户余光扫到，又不会把箴言永久顶掉
+const SEALED_ACK_MS = 90_000;
+
 function pickVerse(): string {
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
@@ -30,6 +33,7 @@ export class StatusLine {
   private count: number | null = null;
   private sealed = false;
   private shown = '';
+  private ackTimer = 0;
   private readonly verse = pickVerse();
 
   constructor(private container: HTMLElement) {}
@@ -58,6 +62,11 @@ export class StatusLine {
     this.sealed = true;
     this.count = (this.count ?? 0) + 1;
     this.show(`已封存 ${this.count} 条`);
+    window.clearTimeout(this.ackTimer);
+    this.ackTimer = window.setTimeout(() => {
+      this.sealed = false;
+      this.show(this.verse);
+    }, SEALED_ACK_MS);
     void this.refresh();
   }
 

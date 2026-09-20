@@ -2,12 +2,12 @@ import { animate } from 'motion';
 import { prefersReducedMotion } from './reduced-motion';
 
 // 录音键：状态切换走 motion spring（scale/opacity 内联托管），rim/光晕走 CSS。
-// 静息浮动在包裹层 #record-float 上做（rAF 正弦，±9pt、周期 6s），
+// 静息浮动在包裹层 #record-float 上做（rAF 正弦，幅度 = 直径 8%、周期 6s），
 // 叠加与浮动错相的等积形变晃动（scaleX/scaleY ±3%，周期 5.3s）——上升中的气泡。
 // 第三层运动是 CSS 侧的膜边界形变（blob-morph 9s，border-radius ±7%），三层错相叠加出活物感。
 // 高光视差经 CSS 变量 --par 传给伪元素。JS 侧仅 transform；reduced-motion 三层全停。
 // 红线豁免：用户明确点名要"明显在浮"，幅度以不晕为上限。
-const FLOAT_AMPLITUDE = 9;
+const FLOAT_AMP_RATIO = 0.08; // 直径占比：112pt 时 ≈9pt，150pt 时 ≈12pt
 const FLOAT_PERIOD_S = 6.0;
 const WOBBLE_PERIOD_S = 5.3;
 const WOBBLE_AMOUNT = 0.03;
@@ -26,11 +26,12 @@ export class RecordButton {
     const step = (now: number): void => {
       const dt = Math.min(0.05, (now - this.lastT) / 1000);
       this.lastT = now;
-      const targetAmp = this.floating && !prefersReducedMotion() ? FLOAT_AMPLITUDE : 0;
+      const fullAmp = this.floatEl.clientWidth * FLOAT_AMP_RATIO;
+      const targetAmp = this.floating && !prefersReducedMotion() ? fullAmp : 0;
       this.amp += (targetAmp - this.amp) * Math.min(1, dt * 1.4);
       this.floatT += dt;
       const phase = (this.floatT * Math.PI * 2) / FLOAT_PERIOD_S;
-      const engage = this.amp / FLOAT_AMPLITUDE; // 0..1，浮动启停时晃动同步淡入淡出
+      const engage = fullAmp > 0 ? this.amp / fullAmp : 0; // 0..1，浮动启停时晃动同步淡入淡出
       const y = Math.sin(phase) * this.amp;
       const wob = Math.sin((this.floatT * Math.PI * 2) / WOBBLE_PERIOD_S + 1.2) * WOBBLE_AMOUNT * engage;
       this.floatEl.style.transform =
