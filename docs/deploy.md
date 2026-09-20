@@ -2,7 +2,7 @@
 
 ## 当前部署形态（已生效）
 
-- **服务**：launchd 托管，`~/Library/LaunchAgents/app.mozhao.plist`，开机自启 + 崩溃重拉
+- **服务**：launchd 托管，`~/Library/LaunchAgents/app.mozhao.plist`，开机自启 + 崩溃重拉。plist 的 `EnvironmentVariables` 必须含 `PATH=/opt/homebrew/bin:/usr/bin:/bin`——launchd 默认 PATH 找不到 ffmpeg，whisper 会转写失败
 - **端口**：`127.0.0.1:28787`
 - **公网入口**：`https://<your-host>.<your-domain>`（用户自管的 Cloudflare named tunnel，指向本机 28787）
 - **Bearer token**：`<在 plist 里查看：~/Library/LaunchAgents/app.mozhao.plist>`（在 plist 里；换 token 改 plist 后 `launchctl kickstart -k gui/$(id -u)/app.mozhao`）

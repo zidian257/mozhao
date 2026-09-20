@@ -676,6 +676,20 @@ button {
   color: var(--ink-85);
 }
 
+/* 构建标识：右下角极淡小字，截图定位部署版本用，存在感刻意压到最低 */
+#build-tag {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 10px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+  z-index: 2;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 /* ─── 通知（仅麦克风不可用时） ─── */
 
 #notice {

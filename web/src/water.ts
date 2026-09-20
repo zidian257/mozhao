@@ -105,7 +105,8 @@ void main() {
   col = mix(col, cTop, smoothstep(0.45, 1.02, up));
 
   // 斯涅尔窗：顶部中央的大柔光窗——全场唯一光源，带极慢水面闪烁与 ~8s 呼吸（大小/亮度 ±6%）
-  vec2 wv = (q - vec2(0.5 * aspect, 1.06)) * vec2(1.9, 1.35);
+  // 尺寸走短边归一：竖屏上窗口按宽度收敛，亮区只占顶部一小条，不会照亮半个屏幕
+  vec2 wv = (q - vec2(0.5 * aspect, 1.06)) * vec2(1.9, 1.35) / min(aspect, 1.0);
   wv /= 1.0 + 0.06 * sin(uTime * 0.785);
   float snell = exp(-dot(wv, wv) * 2.6);
   snell *= 0.9 + 0.1 * vnoise(vec2(q.x * 2.0, uTime * 0.02));
@@ -138,7 +139,7 @@ void main() {
     fbm(cp * 0.6 + vec2(5.2, 1.3) - driftA * 0.6));
   float cn = fbm(cp + (warp - 0.5) * 1.4 + vec2(driftA * 0.8, driftA * 0.5));
   float fil = 1.0 - abs(2.0 * cn - 1.0);
-  fil = pow(fil, 7.0);
+  fil = pow(fil, 9.0);
   float flow = 0.7 + 0.3 * fbm(qs * 1.3 + vec2(uTime * 0.05, -uTime * 0.036));
   col += vec3(0.55, 0.75, 0.78) * fil * flow * 0.12 * smoothstep(0.5, 0.95, up);
 

@@ -39,6 +39,7 @@ const timerEl = el('timer');
 const finishBtn = el<HTMLButtonElement>('finish-btn');
 const cancelBtn = el<HTMLButtonElement>('cancel-btn');
 const statusLineEl = el('status-line');
+el('build-tag').textContent = __BUILD_ID__;
 const reviewScreen = el('review-screen');
 const reviewCardEl = el('review-card');
 const reviewStateEl = el('review-state');
