@@ -38,10 +38,13 @@ uniform float uGrain;
 
 out vec4 fragColor;
 
+// Hash without Sine（Dave Hoskins）：小乘数、中间量有界——
+// 经典 hash21 的 fract(p*234.34) 在部分移动 GPU（Mali/Immortalis）上会因
+// 大数精度崩塌退化成竖直条纹、噪声断裂；此版本在桌面与移动端行为一致。
 float hash21(vec2 p) {
-  p = fract(p * vec2(234.34, 435.345));
-  p += dot(p, p + 34.23);
-  return fract(p.x * p.y);
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
 }
 
 float vnoise(vec2 p) {
