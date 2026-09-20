@@ -38,6 +38,7 @@ void main() {
 
 const FRAG = `#version 300 es
 precision highp float;
+precision highp int;
 
 uniform vec2 uRes;
 uniform float uTime;
@@ -46,6 +47,8 @@ uniform float uGrain;
 uniform vec2 uBubblePos;
 uniform vec2 uBubbleRad;
 uniform vec3 uBubbleMix;
+uniform vec4 uOff; // 分层开关（远程诊断用）：x=光柱 y=焦散 z=极光 w=微粒
+uniform float uOffDither;
 
 out vec4 fragColor;
 
@@ -58,13 +61,29 @@ float hash21(vec2 p) {
   return fract((p3.x + p3.y) * p3.z);
 }
 
+// 32 位无符号整数位混合（lowbias32）：与浮点精度彻底无关。
+// 逐像素抖动/颗粒以 gl_FragCoord（上千）为种子，浮点哈希在这种大坐标下
+// 于部分移动 GPU 上会退化成规则细格——整数路径在任何 GPU 上逐位一致。
+uint uhash(uint h) {
+  h ^= h >> 16u;
+  h *= 0x7feb352du;
+  h ^= h >> 15u;
+  h *= 0x846ca68bu;
+  h ^= h >> 16u;
+  return h;
+}
+
+// 周期 32 无缝包裹：坐标与格点同周期取模，跨缝连续。所有噪声输入（含随运行
+// 时间无限增长的相位项）永远收在 [0,32)——低精度单元上小数位也不丢；
+// 场上最大跨度 ~14，周期 32 的重复在屏外，视觉上无差
 float vnoise(vec2 p) {
+  p = mod(p, 32.0);
   vec2 i = floor(p);
   vec2 f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(
-    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
-    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    mix(hash21(mod(i, 32.0)), hash21(mod(i + vec2(1.0, 0.0), 32.0)), u.x),
+    mix(hash21(mod(i + vec2(0.0, 1.0), 32.0)), hash21(mod(i + vec2(1.0, 1.0), 32.0)), u.x),
     u.y);
 }
 
@@ -105,7 +124,7 @@ vec3 background(vec2 q, float aspect, float t) {
   vec3 ramp = mix(cBot, cMid, smoothstep(0.0, 0.55, up));
   ramp = mix(ramp, cTop, smoothstep(0.45, 1.02, up));
   vec3 aur = aurora(qs, t);
-  vec3 col = mix(ramp, aur, mix(0.30, 0.60, smoothstep(0.15, 1.0, up)));
+  vec3 col = mix(ramp, aur, mix(0.30, 0.60, smoothstep(0.15, 1.0, up)) * (1.0 - uOff.z));
 
   // 斯涅尔窗：顶部中央的大柔光窗——全场唯一光源，带极慢水面闪烁与 ~8s 呼吸（大小/亮度 ±6%）
   // 光色与极光场联动：同一时刻的窗光与背景色相一致，不打架
@@ -134,7 +153,7 @@ vec3 background(vec2 q, float aspect, float t) {
     beam *= smoothstep(lowFade, hiFade, up) * smoothstep(1.02, 0.7, up);
     beam *= 0.65 + 0.35 * vnoise(vec2(fi * 7.3, t * 0.028));
     vec3 rayTint = mix(vec3(0.50, 0.74, 0.80), vec3(0.68, 0.56, 0.88), fi);
-    col += rayTint * beam * (1.0 - fi * 0.65) * mix(0.10, 0.055, portrait);
+    col += rayTint * beam * (1.0 - fi * 0.65) * mix(0.10, 0.055, portrait) * (1.0 - uOff.x);
   }
 
   // 焦散：domain-warped ridged fbm 细丝光网，限上半部；漂移 + 大尺度明暗流动，2-3s 可辨
@@ -149,7 +168,7 @@ vec3 background(vec2 q, float aspect, float t) {
   fil = pow(fil, 9.0);
   float flow = 0.7 + 0.3 * fbm(qs * 1.3 + vec2(t * 0.05, -t * 0.036));
   vec3 causTint = mix(vec3(0.58, 0.80, 0.82), vec3(0.78, 0.64, 0.92), smoothstep(0.2, 0.8, warp.x));
-  col += causTint * fil * flow * 0.12 * smoothstep(0.5, 0.95, up);
+  col += causTint * fil * flow * 0.12 * smoothstep(0.5, 0.95, up) * (1.0 - uOff.y);
 
   // 浮游微粒：三个深度层视差漂移，软圆盘无硬边；前景青碧 / 中层紫藤 / 深层蜜金
   for (int layer = 0; layer < 3; layer++) {
@@ -170,7 +189,7 @@ vec3 background(vec2 q, float aspect, float t) {
     vec3 moteTint = vec3(0.64, 0.80, 0.84);
     if (layer == 1) moteTint = vec3(0.76, 0.68, 0.94);
     if (layer == 2) moteTint = vec3(0.95, 0.85, 0.70);
-    col += moteTint * mote * (0.35 + 0.65 * twinkle) * (0.050 - 0.004 * fl);
+    col += moteTint * mote * (0.35 + 0.65 * twinkle) * (0.050 - 0.004 * fl) * (1.0 - uOff.w);
   }
   return col;
 }
@@ -269,13 +288,14 @@ void main() {
   float vig = smoothstep(1.5, 0.5, length(uv - vec2(0.5)));
   col *= mix(0.90, 1.0, vig);
 
-  // 去色带：三角分布抖动（±1.8/255，常开）——OLED 暗部渐变的 8bit 色带会被慢动画
-  // 带着爬动，比线性抖动多压一档；触屏胶片颗粒为 0（高 PPI 上 6fps 重播种呈雪花）
-  float d1 = hash21(gl_FragCoord.xy);
-  float d2 = hash21(gl_FragCoord.xy + vec2(127.1, 311.7));
-  col += (d1 + d2 - 1.0) * (1.8 / 255.0);
-  float gt = floor(uTime * 6.0);
-  float grain = hash21(gl_FragCoord.xy + vec2(mod(gt, 16.0) * 17.0, mod(gt, 9.0) * 29.0)) - 0.5;
+  // 去色带：三角分布抖动（±1.8/255，常开）+ 桌面胶片颗粒——逐像素种子走整数位哈希
+  // （lowbias32），与浮点精度无关；浮点哈希在 gl_FragCoord 大坐标下于部分移动 GPU
+  // 退化成规则细格。触屏颗粒为 0（高 PPI 上 6fps 重播种呈雪花）
+  uint px = uint(gl_FragCoord.x) * 1664525u + uint(gl_FragCoord.y) * 1013904223u;
+  float d1 = float(uhash(px) & 0xFFFFFFu) / 16777216.0;
+  float d2 = float(uhash(px ^ 0x9e3779b9u) & 0xFFFFFFu) / 16777216.0;
+  col += (d1 + d2 - 1.0) * (1.8 / 255.0) * (1.0 - uOffDither);
+  float grain = float(uhash(px ^ (uint(mod(uTime * 6.0, 1024.0)) + 1u) * 0x85ebca6bu) & 0xFFFFFFu) / 16777216.0 - 0.5;
   col *= 1.0 + grain * uGrain;
 
   fragColor = vec4(col, 1.0);
@@ -341,6 +361,8 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
   const uBubblePos = gl.getUniformLocation(prog, 'uBubblePos');
   const uBubbleRad = gl.getUniformLocation(prog, 'uBubbleRad');
   const uBubbleMix = gl.getUniformLocation(prog, 'uBubbleMix');
+  const uOff = gl.getUniformLocation(prog, 'uOff');
+  const uOffDither = gl.getUniformLocation(prog, 'uOffDither');
   if (!uRes || !uTime || !uRipples || !uGrain || !uBubblePos || !uBubbleRad || !uBubbleMix) return inactive;
 
   // pointer: coarse 比 UA 可靠（iPadOS 桌面模式 UA 谎称 Mac，但 pointer 仍为 coarse）
@@ -349,6 +371,19 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
   // 焦散细丝被插值糊成云团；帧率不节流，跟随屏幕刷新率（60/120Hz）
   const maxDpr = 2;
   gl.uniform1f(uGrain, coarse ? 0 : 0.01);
+
+  // 分层开关（远程诊断，不进文档）：?off=beams,caustics,aurora,motes,dither 任意组合
+  if (uOff && uOffDither) {
+    const off = new URLSearchParams(window.location.search).get('off') ?? '';
+    gl.uniform4f(
+      uOff,
+      off.includes('beams') ? 1 : 0,
+      off.includes('caustics') ? 1 : 0,
+      off.includes('aurora') ? 1 : 0,
+      off.includes('motes') ? 1 : 0,
+    );
+    gl.uniform1f(uOffDither, off.includes('dither') ? 1 : 0);
+  }
 
   const ripples = new Float32Array(MAX_RIPPLES * 4);
   let slot = 0;
