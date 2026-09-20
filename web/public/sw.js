@@ -1,6 +1,7 @@
-/* 默照 service worker — 壳缓存 cache-first，/api 不缓存（网络直发） */
-const SHELL_CACHE = 'obs-shell-v3';
-const RUNTIME_CACHE = 'obs-runtime-v3';
+/* 默照 service worker — 壳缓存 cache-first，/api 不缓存（网络直发），
+   带 query 的请求直发网络（版本探测等新度敏感请求用） */
+const SHELL_CACHE = 'obs-shell-v4';
+const RUNTIME_CACHE = 'obs-runtime-v4';
 const SHELL = [
   '/',
   '/index.html',
@@ -39,6 +40,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) return; // 网络优先：不缓存
+  if (url.search) return; // 带 query 的版本探测等请求直发网络
   if (event.request.method !== 'GET') return;
 
   if (event.request.mode === 'navigate') {

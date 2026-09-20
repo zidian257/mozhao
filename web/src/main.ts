@@ -233,6 +233,33 @@ window.setTimeout(
 status.start();
 initQueue();
 
+// PWA 从后台切回不重载页面，可能一直跑旧包：回到前台时探测服务器 index.html 的
+// 资源指纹（query 绕过 SW 缓存，直发网络），变了说明刚部署过，自动刷新一次换新。
+// 10 分钟内最多刷一次，防部署中途的连环刷新。
+let lastBundleCheck = 0;
+function checkBundleVersion(): void {
+  const now = Date.now();
+  if (now - lastBundleCheck < 60_000) return; // 回到前台的频率足够低，这里再压一道
+  lastBundleCheck = now;
+  const current = document.querySelector<HTMLScriptElement>('script[type="module"]')?.src ?? '';
+  if (!current) return;
+  const reloadedAt = Number(sessionStorage.getItem('obs.reloadedAt') ?? 0);
+  if (now - reloadedAt < 600_000) return;
+  void fetch(`/?v=${now}`)
+    .then((r) => (r.ok ? r.text() : ''))
+    .then((html) => {
+      const m = html.match(/assets\/index-[\w-]+\.js/);
+      if (m && !current.includes(m[0])) {
+        sessionStorage.setItem('obs.reloadedAt', String(now));
+        window.location.reload();
+      }
+    })
+    .catch(() => undefined);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkBundleVersion();
+});
+
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js');

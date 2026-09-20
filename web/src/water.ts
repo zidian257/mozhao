@@ -13,7 +13,7 @@ import { prefersReducedMotion } from './reduced-motion';
 // 斯涅尔窗/光柱/焦散均锚定顶中，竖屏天然成立。
 // 图案尺度（焦散/微粒）锚定短边 ps = p / min(aspect,1)：竖屏手机上若按屏高归一，
 // 细丝光网会被放大成满屏云团——按短边归一后，任何设备上图案密度一致。
-// 移动端保护（pointer: coarse）：DPR 上限 1.5、绘制节流 30fps、颗粒归零（dither 保留防色带）。
+// 移动端保护（pointer: coarse）：颗粒归零（dither 保留防色带）。全平台 60fps、DPR 封顶 2。
 // resize：地址栏伸缩会高频触发，只做 150ms 防抖后的 buffer 重设——过渡期旧 buffer 被 CSS
 // 软拉伸，无重 alloc 跳变。监听 window resize + visualViewport.resize。
 // 降级：WebGL2 不可用 / 编译失败 → 返回 inactive（调用方回退 CSS 渐变）；
@@ -235,8 +235,9 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
 
   // pointer: coarse 比 UA 可靠（iPadOS 桌面模式 UA 谎称 Mac，但 pointer 仍为 coarse）
   const coarse = window.matchMedia('(pointer: coarse)').matches;
-  const maxDpr = coarse ? 1.5 : 2;
-  const minFrameMs = coarse ? 1000 / 30 : 0; // 触屏 30fps 足够，省电防掉帧
+  // DPR 统一封顶 2：触屏曾压到 1.5，但在 1260×2800 级屏幕上要放大 2.1 倍，
+  // 焦散细丝被插值糊成云团；帧率不节流，跟随屏幕刷新率（60/120Hz）
+  const maxDpr = 2;
   gl.uniform1f(uGrain, coarse ? 0 : 0.01);
 
   const ripples = new Float32Array(MAX_RIPPLES * 4);
@@ -246,7 +247,6 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
 
   let staticMode = prefersReducedMotion();
   let raf = 0;
-  let lastDrawMs = -Infinity;
   let resizeTimer = 0;
 
   const resize = (): void => {
@@ -278,11 +278,7 @@ export function initWater(canvas: HTMLCanvasElement): WaterScene {
 
   const loop = (): void => {
     if (staticMode || document.hidden) return;
-    const tMs = performance.now();
-    if (tMs - lastDrawMs >= minFrameMs) {
-      lastDrawMs = tMs;
-      draw(now());
-    }
+    draw(now());
     raf = requestAnimationFrame(loop);
   };
 
