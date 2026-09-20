@@ -113,7 +113,10 @@ void main() {
   snell *= 1.0 + 0.06 * sin(uTime * 0.785 + 1.3);
   col += vec3(0.36, 0.56, 0.60) * snell * 0.6;
 
-  // 光柱：2 条宽带自窗口落下，高斯横向包络 + 内部纹理，向下半场消散；第二条几乎不可见
+  // 光柱：2 条宽带自窗口落下，高斯横向包络 + 内部纹理，向下半场消散；第二条几乎不可见。
+  // 竖屏修正：两柱间距按宽度算只有几十 pt，会合并成一根悬浮暗区的"光门"（静态鬼影）——
+  // 竖屏时下半截提前收掉、强度减半，让光柱只存在于亮窗附近；桌面横屏行为不变。
+  float portrait = smoothstep(0.9, 0.6, aspect); // 0 = 横屏/宽屏，1 = 竖屏手机
   float rays = 0.0;
   for (int i = 0; i < 2; i++) {
     float fi = float(i);
@@ -124,11 +127,13 @@ void main() {
     float b = (quv.x - xr) / wdt;
     float beam = exp(-b * b);
     beam *= 0.6 + 0.4 * vnoise(vec2(quv.x * 9.0 + fi * 3.1, q.y * 2.5 - uTime * 0.04));
-    beam *= smoothstep(0.06, 0.5, up) * smoothstep(1.02, 0.7, up);
+    float lowFade = mix(0.06, 0.42, portrait);
+    float hiFade = mix(0.50, 0.68, portrait);
+    beam *= smoothstep(lowFade, hiFade, up) * smoothstep(1.02, 0.7, up);
     beam *= 0.65 + 0.35 * vnoise(vec2(fi * 7.3, uTime * 0.028));
     rays += beam * (1.0 - fi * 0.65);
   }
-  col += vec3(0.50, 0.72, 0.76) * rays * 0.10;
+  col += vec3(0.50, 0.72, 0.76) * rays * mix(0.10, 0.055, portrait);
 
   // 焦散：domain-warped ridged fbm 细丝光网，限上半部；漂移 + 大尺度明暗流动，2-3s 可辨
   // 尺度走 qs（短边归一）：竖屏上仍是细丝，不会糊成大云团
@@ -169,8 +174,11 @@ void main() {
   float vig = smoothstep(1.5, 0.5, length(uv - vec2(0.5)));
   col *= mix(0.90, 1.0, vig);
 
-  // 去色带：hash 抖动（±1/255 级，常开）+ 6fps 胶片颗粒（幅度 uGrain，触屏为 0）
-  col += (hash21(gl_FragCoord.xy) - 0.5) * (1.5 / 255.0);
+  // 去色带：三角分布抖动（±1.8/255，常开）——OLED 暗部渐变的 8bit 色带会被慢动画
+  // 带着爬动，比线性抖动多压一档；触屏胶片颗粒为 0（高 PPI 上 6fps 重播种呈雪花）
+  float d1 = hash21(gl_FragCoord.xy);
+  float d2 = hash21(gl_FragCoord.xy + vec2(127.1, 311.7));
+  col += (d1 + d2 - 1.0) * (1.8 / 255.0);
   float gt = floor(uTime * 6.0);
   float grain = hash21(gl_FragCoord.xy + vec2(mod(gt, 16.0) * 17.0, mod(gt, 9.0) * 29.0)) - 0.5;
   col *= 1.0 + grain * uGrain;
