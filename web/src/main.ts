@@ -52,6 +52,7 @@ const noticeEl = el('notice');
 // 环境水景：同步初始化，渲染循环自驱动；与 recorder 完全解耦，永不阻塞录音
 const water = initWater(el<HTMLCanvasElement>('water'));
 if (!water.active) app.classList.add('no-water');
+else app.classList.add('shader-bubble'); // 泡泡作画由 shader 接管，DOM 键仅作热区
 
 // reduced-motion：JS 侧降级仪式，CSS 侧 .reduced 降级过渡，shader 静态化
 app.classList.toggle('reduced', prefersReducedMotion());
@@ -64,7 +65,7 @@ let mode: Mode = 'idle';
 let entryId: string | null = null;
 
 const recorder = new Recorder();
-const recordButton = new RecordButton(recordBtn, el('record-float'));
+const recordButton = new RecordButton(recordBtn, el('record-float'), water);
 const waveform = new Waveform(waveformEl);
 const timer = new Timer(timerEl, () => recorder.elapsed);
 const status = new StatusLine(statusLineEl);

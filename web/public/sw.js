@@ -1,7 +1,7 @@
 /* 默照 service worker — 壳缓存 cache-first，/api 不缓存（网络直发），
    带 query 的请求直发网络（版本探测等新度敏感请求用） */
-const SHELL_CACHE = 'obs-shell-v4';
-const RUNTIME_CACHE = 'obs-runtime-v4';
+const SHELL_CACHE = 'obs-shell-v5';
+const RUNTIME_CACHE = 'obs-runtime-v5';
 const SHELL = [
   '/',
   '/index.html',
