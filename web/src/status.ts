@@ -50,7 +50,8 @@ export class StatusLine {
   async refresh(): Promise<void> {
     try {
       const status = await getStatus();
-      this.count = status.sealed_count;
+      // 确认窗内本地刚 +1 而服务端可能还没落完，计数不许往回退；窗外以服务端为准
+      this.count = this.sealed ? Math.max(status.sealed_count, this.count ?? 0) : status.sealed_count;
       if (this.sealed) this.show(`已封存 ${this.count} 条`);
     } catch {
       // 离线/401：安静落回箴言

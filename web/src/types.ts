@@ -17,4 +17,4 @@ export interface TranscriptResponse {
   text: string;
 }
 
-export type Mode = 'idle' | 'recording' | 'review' | 'sealing';
+export type Mode = 'idle' | 'recording';

@@ -4,11 +4,10 @@ import { enqueueCapture, flushQueue, initQueue } from './queue';
 import { onReducedMotionChange, prefersReducedMotion } from './reduced-motion';
 import { initWater } from './water';
 import { RecordButton } from './record-button';
-import { playEvaporate, playSeal, playTapRipple, vibrate } from './seal-anim';
+import { playEvaporate, playTapRipple, vibrate } from './seal-anim';
 import { acquireWakeLock } from './wakelock';
 import { Recorder } from './recorder';
 import type { RecordResult } from './recorder';
-import { ReviewCard } from './review-card';
 import { StatusLine } from './status';
 import { Timer } from './timer';
 import { ulid } from './ulid';
@@ -40,12 +39,6 @@ const finishBtn = el<HTMLButtonElement>('finish-btn');
 const cancelBtn = el<HTMLButtonElement>('cancel-btn');
 const statusLineEl = el('status-line');
 el('build-tag').textContent = __BUILD_ID__;
-const reviewScreen = el('review-screen');
-const reviewCardEl = el('review-card');
-const reviewStateEl = el('review-state');
-const reviewTextEl = el<HTMLTextAreaElement>('review-text');
-const sealBtn = el<HTMLButtonElement>('seal-btn');
-const discardBtn = el<HTMLButtonElement>('discard-btn');
 const fxLayer = el('fx');
 const noticeEl = el('notice');
 
@@ -69,19 +62,6 @@ const recordButton = new RecordButton(recordBtn, el('record-float'), water);
 const waveform = new Waveform(waveformEl);
 const timer = new Timer(timerEl, () => recorder.elapsed);
 const status = new StatusLine(statusLineEl);
-
-const review = new ReviewCard(
-  reviewScreen,
-  reviewCardEl,
-  reviewStateEl,
-  reviewTextEl,
-  sealBtn,
-  discardBtn,
-  {
-    onSeal: () => void sealCurrent(),
-    onDiscard: () => void discardCurrent(),
-  },
-);
 
 function setMode(next: Mode): void {
   mode = next;
@@ -121,23 +101,27 @@ async function startRecording(x?: number, y?: number): Promise<void> {
   timer.start();
 }
 
+// 完成 = 直接封存：不预览不校对（对着它说的话最不设防，文字不该糊回脸上），
+// 转写全部后台进行。确认只有三样：泡泡收回、落点一圈波、状态行「已封存 N 条」。
 async function finishRecording(): Promise<void> {
   if (mode !== 'recording') return;
-  setMode('review');
-  recordButton.toHidden();
+  setMode('idle');
+  recordButton.toIdle();
   waveform.stop();
   timer.stop();
   let result: RecordResult;
   try {
     result = await recorder.stop();
   } catch {
-    setMode('idle');
-    recordButton.showIdle();
     return;
   }
   const id = entryId ?? ulid();
   entryId = null;
-  review.open(id, uploadOrQueue(id, result)); // true=已达服务端，false=进离线队列
+  const rect = recordBtn.getBoundingClientRect();
+  water.ripple(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.2);
+  vibrate(8);
+  status.bump();
+  void uploadOrQueue(id, result).then(() => flushQueue());
 }
 
 async function uploadOrQueue(id: string, result: RecordResult): Promise<boolean> {
@@ -168,47 +152,9 @@ async function cancelRecording(): Promise<void> {
   entryId = null;
 }
 
-async function sealCurrent(): Promise<void> {
-  if (mode !== 'review' || !review.isOpen) return;
-  setMode('sealing');
-  await review.flushSave();
-  const ripples = playSeal(reviewCardEl, fxLayer, water);
-  // 输入优先级高于表演：卡片入水后立刻回静息态，涌波在水景层散尽
-  window.setTimeout(
-    () => {
-      review.close();
-      setMode('idle');
-      recordButton.showIdle();
-    },
-    prefersReducedMotion() ? 170 : 800,
-  );
-  await ripples;
-  status.bump(); // 「已封存」数字悄悄 +1
-  void flushQueue();
-}
-
-async function discardCurrent(): Promise<void> {
-  if (mode !== 'review' || !review.isOpen) return;
-  setMode('idle');
-  recordButton.showIdle();
-  await review.discard();
-}
-
-// 离开即封存：校对页在切后台/锁屏/关闭时视为封存（UI 收尾，条目早已落库）
-function settleOnLeave(): void {
-  if (mode === 'review' && review.isOpen) {
-    review.settleQuietly();
-    setMode('idle');
-    recordButton.showIdle();
-    void status.refresh();
-  }
-}
-
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') settleOnLeave();
   if (document.visibilityState === 'visible' && mode === 'recording') void acquireWakeLock();
 });
-window.addEventListener('pagehide', settleOnLeave);
 
 // 下半屏整块为录音热区；pointerdown 即启动，不等抬起
 hotzone.addEventListener('pointerdown', (event) => {

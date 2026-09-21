@@ -418,134 +418,7 @@ button {
   }
 }
 
-/* ─── 校对页 ─── */
-
-#review-screen {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#review-screen[hidden] {
-  display: none;
-}
-
-#review-card {
-  position: relative;
-  width: calc(100% - 48px);
-  max-width: 520px;
-  max-height: 72vh;
-  overflow-y: auto;
-  border-radius: 20px;
-  padding: 18px 20px 10px;
-  /* glassmorphism 近似：半透明底 + backdrop blur + 顶部内高光 + 1px 内边光 */
-  background: rgba(18, 26, 34, 0.52);
-  backdrop-filter: blur(22px) saturate(1.25);
-  -webkit-backdrop-filter: blur(22px) saturate(1.25);
-  box-shadow:
-    inset 0 1px 0 rgba(215, 225, 232, 0.09),
-    inset 0 0 0 1px rgba(111, 179, 201, 0.1),
-    0 24px 60px rgba(4, 10, 16, 0.55); /* 环境投影，带背景色染色 */
-  will-change: transform;
-}
-#review-card.rise-reduced {
-  animation: fade-in 150ms ease-out both;
-}
-
-.review-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 32px;
-  margin-bottom: 8px;
-}
-.review-state {
-  font-size: 13px;
-  color: var(--ink-45);
-}
-.review-state:empty {
-  display: none;
-}
-#seal-btn {
-  font-size: 15px;
-  color: var(--ink-85);
-  padding: 6px 2px;
-  transition: opacity 150ms;
-}
-#seal-btn:active {
-  opacity: 0.55;
-}
-
-#review-text {
-  display: block;
-  width: 100%;
-  border: none;
-  outline: none;
-  resize: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: 17px; /* 转写正文 17px/1.7：全界面唯一允许大声的元素 */
-  line-height: 1.7;
-  color: var(--ink-45);
-  caret-color: var(--accent); /* 光标用强调色 */
-  user-select: text;
-  -webkit-user-select: text;
-  transition: color 250ms ease-out;
-}
-#review-text.lit,
-#review-text:focus {
-  color: var(--ink-92);
-}
-#review-text.pre-lit,
-#review-text.pre-lit:focus {
-  color: transparent;
-}
-
-/* 转写逐行淡入 overlay（落位后交换回 textarea） */
-.lines-reveal {
-  position: absolute;
-  pointer-events: none;
-  font-size: 17px;
-  line-height: 1.7;
-  color: var(--ink-92);
-  transition: opacity 200ms ease-out;
-}
-.lines-reveal .line {
-  display: block;
-  opacity: 0;
-  animation: line-in 150ms ease-out forwards;
-}
-.lines-reveal.done {
-  opacity: 0;
-}
-@keyframes line-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-#discard-btn {
-  display: block;
-  width: 100%;
-  margin-top: 14px;
-  padding: 10px 0 12px;
-  font-size: 13px;
-  color: var(--ink-40); /* 底部边缘 40% 透明度 */
-  text-align: center;
-  transition: opacity 150ms;
-}
-#discard-btn:active {
-  opacity: 0.55;
-}
-
-/* ─── 仪式：点按水波 / DOM 波纹兜底 / 蒸发微粒 ─── */
+/* ─── 仪式：点按水波 / 蒸发微粒 ─── */
 
 #fx {
   position: absolute;
@@ -575,30 +448,6 @@ button {
   }
 }
 
-.seal-ring {
-  position: fixed;
-  width: 110px;
-  height: 110px;
-  margin: -55px 0 0 -55px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(111, 179, 201, 0.55);
-  opacity: 0;
-  animation: seal-ring 1200ms ease-out forwards;
-}
-@keyframes seal-ring {
-  0% {
-    transform: scale(0.3);
-    opacity: 0;
-  }
-  12% {
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(var(--ring-scale, 2));
-    opacity: 0;
-  }
-}
-
 /* 蒸发：柔和发光微粒，融入环境微粒场 */
 .evap-particle {
   position: fixed;
@@ -623,13 +472,7 @@ button {
   }
 }
 
-#review-card.seal-fade,
-#review-card.quiet-out {
-  opacity: 0;
-  transition: opacity 150ms ease-out;
-}
-
-/* ─── 401 兜底：token 输入（与校对页同语言：玻璃、细环、无多余文案） ─── */
+/* ─── 401 兜底：token 输入（玻璃、细环、无多余文案） ─── */
 
 #token-gate {
   position: absolute;
@@ -748,7 +591,6 @@ button {
   animation: fade-in 150ms ease-out both;
 }
 #app.reduced .tap-ripple,
-#app.reduced .seal-ring,
 #app.reduced .evap-particle {
   display: none;
 }

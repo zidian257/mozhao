@@ -48,4 +48,23 @@ curl -H "Authorization: Bearer <token>" https://<your-host>.<your-domain>/api/ex
 tail -f ~/lab/observer/data/server.log
 ```
 
-转写默认本地 whisper（M5 实测约 5 倍实时）。要切云端：plist 里加 `OBS_CF_ACCOUNT_ID` / `OBS_CF_API_TOKEN`，并把 `OBS_STT_ENGINE` 设为 `cf`。
+转写默认本地 whisper（M5 实测约 5 倍实时）。
+
+## 云端转写（Cloudflare Workers AI）
+
+引擎链：`OBS_STT_ENGINE=cf` 时云端 whisper-large-v3-turbo 优先、本地 whisper 兜底；不配则本地优先、云端兜底；凭据缺失时云端自动跳过，不致命。落库事件的 `engine` 字段记实际出力的引擎。
+
+**配置步骤（凭据只进 plist，不落仓库）：**
+
+1. CF dashboard → 左侧 **AI** → **Workers AI**，确认已开通（免费额度 10k neurons/日；whisper-large-v3-turbo 约 46 neurons/分钟，折合每天约 200 分钟免费转写，日常远用不完）
+2. 右上头像 → **My Profile** → **API Tokens** → Create Token → 用 **Workers AI** 模板（或自定义：Account / Workers AI / Read 权限，Account Resources 选本账户）→ Create，**复制 token（只显示一次）**
+3. 同页或 dashboard 右侧栏复制 **Account ID**（32 位十六进制）
+4. 编辑 `~/Library/LaunchAgents/app.mozhao.plist` 的 `EnvironmentVariables`，加三项：
+   - `OBS_STT_ENGINE` = `cf`
+   - `OBS_CF_ACCOUNT_ID` = 第 3 步的 Account ID
+   - `OBS_CF_API_TOKEN` = 第 2 步的 token
+5. 重载（plist 环境变量改动必须 bootout 才生效，kickstart 不够）：
+   ```bash
+   launchctl bootout gui/$(id -u)/app.mozhao && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/app.mozhao.plist
+   ```
+6. 验证：启动日志应从「云端转写兜底禁用」变为正常就绪；录一条后 `data/log-*.jsonl` 里 transcript 事件的 `engine` 应为 `cf`
