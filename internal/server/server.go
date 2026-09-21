@@ -55,6 +55,7 @@ func (s *Server) Handler() http.Handler { return s.mux }
 func (s *Server) routes() {
 	r := s.mux
 	r.Route("/api", func(r chi.Router) {
+		r.Use(logMiddleware) // 在鉴权之前：401 也要留痕
 		r.Use(bearerMiddleware(s.cfg.Tokens))
 		r.Post("/capture", s.handleCapture)
 		r.Get("/entries", s.handleListEntries)
@@ -70,6 +71,32 @@ func (s *Server) routes() {
 	if s.cfg.Static != nil {
 		r.Get("/*", staticHandler(s.cfg.Static).ServeHTTP)
 	}
+}
+
+// 请求日志：/api 每请求一行（方法 路径 状态 耗时）——公网隧道场景的唯一排障视野。
+// 转写轮询的 200 是高频噪音（校对页每 2.5s 一次），不记；其 404/失败照记。
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func logMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		if r.Method == http.MethodGet && sw.status == http.StatusOK &&
+			strings.HasSuffix(r.URL.Path, "/transcript") {
+			return
+		}
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status,
+			time.Since(start).Round(time.Millisecond))
+	})
 }
 
 // bearerMiddleware 校验 Authorization: Bearer <token> ∈ OBS_TOKENS；

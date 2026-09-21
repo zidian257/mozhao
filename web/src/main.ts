@@ -137,13 +137,13 @@ async function finishRecording(): Promise<void> {
   }
   const id = entryId ?? ulid();
   entryId = null;
-  review.open(id);
-  void uploadOrQueue(id, result);
+  review.open(id, uploadOrQueue(id, result)); // true=已达服务端，false=进离线队列
 }
 
-async function uploadOrQueue(id: string, result: RecordResult): Promise<void> {
+async function uploadOrQueue(id: string, result: RecordResult): Promise<boolean> {
   try {
     await captureVoice(id, result.blob, result.dur, 'pwa');
+    return true;
   } catch {
     await enqueueCapture({
       id,
@@ -152,6 +152,7 @@ async function uploadOrQueue(id: string, result: RecordResult): Promise<void> {
       src: 'pwa',
       queuedAt: Date.now(),
     });
+    return false;
   }
 }
 

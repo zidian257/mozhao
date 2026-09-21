@@ -1,5 +1,6 @@
 import { animate } from 'motion';
 import { ApiError, deleteEntry, getTranscript, patchEntry } from './api';
+import { flushQueue } from './queue';
 import { prefersReducedMotion } from './reduced-motion';
 
 export interface ReviewCallbacks {
@@ -18,6 +19,9 @@ export class ReviewCard {
   private userEdited = false;
   private closed = true;
   private notFoundCount = 0;
+  // 本条 capture 的上传结果：null=在途，true=已达服务端，false=进离线队列。
+  // 404 轮询按此区分「真失败」与「还没到服务器」——后者主动补传并继续等
+  private uploadSettled: boolean | null = null;
 
   constructor(
     private root: HTMLElement,
@@ -46,12 +50,16 @@ export class ReviewCard {
     return !this.closed;
   }
 
-  open(entryId: string): void {
+  open(entryId: string, upload?: Promise<boolean>): void {
     this.entryId = entryId;
     this.closed = false;
     this.savedText = '';
     this.userEdited = false;
     this.notFoundCount = 0;
+    this.uploadSettled = null;
+    void (upload ?? Promise.resolve(true)).then((ok) => {
+      this.uploadSettled = ok;
+    });
     this.textarea.value = '';
     this.textarea.classList.remove('lit', 'pre-lit');
     this.stateEl.textContent = '转写中';
@@ -194,9 +202,27 @@ export class ReviewCard {
         this.showFailed();
         return;
       }
+      // pending：从离线等待态恢复为常规转写中文案
+      if (this.stateEl.textContent !== '转写中') {
+        this.stateEl.textContent = '转写中';
+        this.stateEl.className = 'review-state is-pending';
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        // 条目不存在（多半是 capture 未成功）：连续 3 次（约 6s）后落终态，不再空等
+        if (this.uploadSettled === false) {
+          // 上传失败进了离线队列：不是转写失败——主动补传，到库后照常转写
+          this.stateEl.textContent = '已离线保存，联网后自动转写';
+          this.stateEl.className = 'review-state is-pending';
+          void flushQueue();
+          this.schedulePoll(5000);
+          return;
+        }
+        if (this.uploadSettled === null) {
+          // 上传仍在途（弱网大文件）：不累计 404，继续等
+          this.schedulePoll(2500);
+          return;
+        }
+        // 条目不存在（上传已完成但服务端无记录，异常）：连续 3 次（约 6s）后落终态
         this.notFoundCount += 1;
         if (this.notFoundCount >= 3) {
           this.showFailed();
