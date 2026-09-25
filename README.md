@@ -21,7 +21,7 @@ OBS_TOKENS=dev ./mozhao             # http://localhost:8787
 ## 文档
 
 - `docs/api-contract.md` — 前后端契约（事件模型 / API / 封存规则），改行为先改它
-- `docs/deploy.md` — 隧道、Access OTP、launchd、iPhone 快捷指令部署手册
+- `docs/deploy.md` — 隧道、Access OTP、pm2 托管、iPhone 快捷指令部署手册
 - 产品方案：《观测者-产品技术方案》（设计红线：不评价、不催促、不记分）
 
 ## 配置（env）
